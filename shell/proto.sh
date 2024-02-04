@@ -7,3 +7,6 @@ echo 'export PATH="$PATH:/usr/local/protobuf/bin"' >> ~/.bashrc
 go install google.golang.org/protobuf/...@v1.25.0
 #compile protobuf
 protoc api/v1/*.proto --go_out=. --go_opt=paths=source_relative --proto_path=.
+
+go get google.golang.org/grpc@v1.32.0
+go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
