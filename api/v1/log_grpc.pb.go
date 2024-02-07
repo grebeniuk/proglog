@@ -32,6 +32,7 @@ type LogClient interface {
 	Produce(ctx context.Context, in *ProduceRequest, opts ...grpc.CallOption) (*ProduceResponse, error)
 	Consume(ctx context.Context, in *ConsumeRequest, opts ...grpc.CallOption) (*ConsumeResponse, error)
 	ConsumeStream(ctx context.Context, in *ConsumeRequest, opts ...grpc.CallOption) (Log_ConsumeStreamClient, error)
+	// stream is important here, without it it will generate RecvAndClose method
 	ProduceStream(ctx context.Context, opts ...grpc.CallOption) (Log_ProduceStreamClient, error)
 }
 
@@ -131,6 +132,7 @@ type LogServer interface {
 	Produce(context.Context, *ProduceRequest) (*ProduceResponse, error)
 	Consume(context.Context, *ConsumeRequest) (*ConsumeResponse, error)
 	ConsumeStream(*ConsumeRequest, Log_ConsumeStreamServer) error
+	// stream is important here, without it it will generate RecvAndClose method
 	ProduceStream(Log_ProduceStreamServer) error
 	mustEmbedUnimplementedLogServer()
 }
