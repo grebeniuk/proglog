@@ -21,6 +21,32 @@ import (
 	"github.com/grebeniuk/proglog/internal/server"
 )
 
+type Config struct {
+	ServerTLSConfig *tls.Config
+	PeerTLSConfig   *tls.Config
+	// DataDir stores the log and raft data.
+	DataDir string
+	// BindAddr is the address serf runs on.
+	BindAddr string
+	// RPCPort is the port for client (and Raft) connections.
+	RPCPort int
+	// Raft server id.
+	NodeName string
+	// Bootstrap should be set to true when starting the first node of the cluster.
+	StartJoinAddrs []string
+	ACLModelFile   string
+	ACLPolicyFile  string
+	Bootstrap      bool
+}
+
+func (c Config) RPCAddr() (string, error) {
+	host, _, err := net.SplitHostPort(c.BindAddr)
+	if err != nil {
+		return "", err
+	}
+	return fmt.Sprintf("%s:%d", host, c.RPCPort), nil
+}
+
 type Agent struct {
 	Config Config
 
@@ -32,27 +58,6 @@ type Agent struct {
 	shutdown     bool
 	shutdowns    chan struct{}
 	shutdownLock sync.Mutex
-}
-
-type Config struct {
-	ServerTLSConfig *tls.Config
-	PeerTLSConfig   *tls.Config
-	DataDir         string
-	BindAddr        string
-	RPCPort         int
-	NodeName        string
-	StartJoinAddrs  []string
-	ACLModelFile    string
-	ACLPolicyFile   string
-	Bootstrap       bool
-}
-
-func (c Config) RPCAddr() (string, error) {
-	host, _, err := net.SplitHostPort(c.BindAddr)
-	if err != nil {
-		return "", err
-	}
-	return fmt.Sprintf("%s:%d", host, c.RPCPort), nil
 }
 
 func New(config Config) (*Agent, error) {
@@ -86,8 +91,13 @@ func (a *Agent) setupLogger() error {
 }
 
 func (a *Agent) setupMux() error {
+	addr, err := net.ResolveTCPAddr("tcp", a.Config.BindAddr)
+	if err != nil {
+		return err
+	}
 	rpcAddr := fmt.Sprintf(
-		":%d",
+		"%s:%d",
+		addr.IP.String(),
 		a.Config.RPCPort,
 	)
 	ln, err := net.Listen("tcp", rpcAddr)
@@ -99,6 +109,7 @@ func (a *Agent) setupMux() error {
 }
 
 func (a *Agent) setupLog() error {
+	// ...
 	raftLn := a.mux.Match(func(reader io.Reader) bool {
 		b := make([]byte, 1)
 		if _, err := reader.Read(b); err != nil {
@@ -112,9 +123,14 @@ func (a *Agent) setupLog() error {
 		a.Config.ServerTLSConfig,
 		a.Config.PeerTLSConfig,
 	)
+	rpcAddr, err := a.Config.RPCAddr()
+	if err != nil {
+		return err
+	}
+	logConfig.Raft.BindAddr = rpcAddr
 	logConfig.Raft.LocalID = raft.ServerID(a.Config.NodeName)
 	logConfig.Raft.Bootstrap = a.Config.Bootstrap
-	var err error
+	// ...
 	a.log, err = log.NewDistributedLog(
 		a.Config.DataDir,
 		logConfig,

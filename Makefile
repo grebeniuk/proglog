@@ -55,3 +55,10 @@ compile:
 	--go_opt=paths=source_relative \
 	--proto_path=.
 
+# START: build_docker
+TAG ?= 0.0.1
+
+build-docker:
+	docker build -t github.com/grebeniuk/proglog:$(TAG) .
+
+# END: build_docker

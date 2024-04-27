@@ -10,10 +10,12 @@ import (
 	"path/filepath"
 	"time"
 
-	api "github.com/grebeniuk/proglog/api/v1"
-	"github.com/hashicorp/raft"
 	raftboltdb "github.com/hashicorp/raft-boltdb"
 	"google.golang.org/protobuf/proto"
+
+	"github.com/hashicorp/raft"
+
+	api "github.com/grebeniuk/proglog/api/v1"
 )
 
 type DistributedLog struct {
@@ -22,7 +24,10 @@ type DistributedLog struct {
 	raft   *raft.Raft
 }
 
-func NewDistributedLog(dataDir string, config Config) (*DistributedLog, error) {
+func NewDistributedLog(dataDir string, config Config) (
+	*DistributedLog,
+	error,
+) {
 	l := &DistributedLog{
 		config: config,
 	}
@@ -52,7 +57,6 @@ func (l *DistributedLog) setupRaft(dataDir string) error {
 	if err := os.MkdirAll(logDir, 0755); err != nil {
 		return err
 	}
-
 	logConfig := l.config
 	logConfig.Segment.InitialOffset = 1
 	logStore, err := newLogStore(logDir, logConfig)
@@ -85,6 +89,7 @@ func (l *DistributedLog) setupRaft(dataDir string) error {
 		timeout,
 		os.Stderr,
 	)
+
 	config := raft.DefaultConfig()
 	config.LocalID = l.config.Raft.LocalID
 	if l.config.Raft.HeartbeatTimeout != 0 {
@@ -123,7 +128,7 @@ func (l *DistributedLog) setupRaft(dataDir string) error {
 		config := raft.Configuration{
 			Servers: []raft.Server{{
 				ID:      config.LocalID,
-				Address: transport.LocalAddr(),
+				Address: raft.ServerAddress(l.config.Raft.BindAddr),
 			}},
 		}
 		err = l.raft.BootstrapCluster(config).Error()
@@ -142,7 +147,10 @@ func (l *DistributedLog) Append(record *api.Record) (uint64, error) {
 	return res.(*api.ProduceResponse).Offset, nil
 }
 
-func (l *DistributedLog) apply(reqType RequestType, req proto.Message) (interface{}, error) {
+func (l *DistributedLog) apply(reqType RequestType, req proto.Message) (
+	interface{},
+	error,
+) {
 	var buf bytes.Buffer
 	_, err := buf.Write([]byte{byte(reqType)})
 	if err != nil {
@@ -226,6 +234,22 @@ func (l *DistributedLog) Close() error {
 		return err
 	}
 	return l.log.Close()
+}
+
+func (l *DistributedLog) GetServers() ([]*api.Server, error) {
+	future := l.raft.GetConfiguration()
+	if err := future.Error(); err != nil {
+		return nil, err
+	}
+	var servers []*api.Server
+	for _, server := range future.Configuration().Servers {
+		servers = append(servers, &api.Server{
+			Id:       string(server.ID),
+			RpcAddr:  string(server.Address),
+			IsLeader: l.raft.Leader() == server.Address,
+		})
+	}
+	return servers, nil
 }
 
 var _ raft.FSM = (*fsm)(nil)
@@ -434,22 +458,6 @@ func (s *StreamLayer) Accept() (net.Conn, error) {
 
 func (s *StreamLayer) Close() error {
 	return s.ln.Close()
-}
-
-func (l *DistributedLog) GetServers() ([]*api.Server, error) {
-	future := l.raft.GetConfiguration()
-	if err := future.Error(); err != nil {
-		return nil, err
-	}
-	var servers []*api.Server
-	for _, server := range future.Configuration().Servers {
-		servers = append(servers, &api.Server{
-			Id:       string(server.ID),
-			RpcAddr:  string(server.Address),
-			IsLeader: l.raft.Leader() == server.Address,
-		})
-	}
-	return servers, nil
 }
 
 func (s *StreamLayer) Addr() net.Addr {

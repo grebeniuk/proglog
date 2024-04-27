@@ -27,10 +27,8 @@ func TestMultipleNodes(t *testing.T) {
 		defer func(dir string) {
 			_ = os.RemoveAll(dir)
 		}(dataDir)
-		ln, err := net.Listen(
-			"tcp",
-			fmt.Sprintf("127.0.0.1:%d", ports[i]),
-		)
+
+		ln, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", ports[i]))
 		require.NoError(t, err)
 
 		config := log.Config{}
@@ -40,6 +38,7 @@ func TestMultipleNodes(t *testing.T) {
 		config.Raft.ElectionTimeout = 50 * time.Millisecond
 		config.Raft.LeaderLeaseTimeout = 50 * time.Millisecond
 		config.Raft.CommitTimeout = 5 * time.Millisecond
+		config.Raft.BindAddr = ln.Addr().String()
 
 		if i == 0 {
 			config.Raft.Bootstrap = true
